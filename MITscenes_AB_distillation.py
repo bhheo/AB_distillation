@@ -332,7 +332,6 @@ train_loss = 0
 for epoch in range(1, max_epoch+1):
     adjust_learning_rate(optimizer, epoch - 1)
 
-    ratio = max(3 * (1 - epoch / max_epoch), 0) + 1
     if args.KD:
         train_loss = train_KD(distill_net, epoch)
     else:
