@@ -207,7 +207,7 @@ def train_distillation(distill_net, epoch, withCE=False):
 # Training
 def train_KD(distill_net, epoch):
     epoch_start_time = time.time()
-    print('\nStage 2 Epoch: %d' % epoch)
+    print('\nClassification training Epoch: %d' % epoch)
     distill_net.train()
     distill_net.module.s_net.train()
     distill_net.module.t_net.eval()
@@ -249,7 +249,7 @@ def train_KD(distill_net, epoch):
 # Training
 def train(net, epoch):
     epoch_start_time = time.time()
-    print('\nStage 2 Epoch: %d' % epoch)
+    print('\nClassification training Epoch: %d' % epoch)
     net.train()
     train_loss = 0
     correct = 0
