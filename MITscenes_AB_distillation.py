@@ -55,7 +55,6 @@ def criterion_active_L2(source, target, margin):
     return torch.abs(loss).sum()
 
 dataset_name = 'MITscenes'
-temperature = 3
 
 parser = argparse.ArgumentParser(description='PyTorch MITscenes Training')
 
@@ -63,17 +62,15 @@ gpu_nums = [0, 1]
 
 parser.add_argument('--loss_multiplier', default=1, type=float, help='multiplier to loss')
 parser.add_argument('--pretrained', default=False, type=bool, help='Use pretrained network')
-parser.add_argument('--sample_number', default=5, type=int, help='Training sample number per class')
+parser.add_argument('--KD', default=True, type=bool, help='KD (Hinton) method')
+parser.add_argument('--distill_epoch', default=60, type=int, help='epoch for distillation')
+parser.add_argument('--max_epoch', default=100, type=int, help='epoch for all')
 parser.add_argument('--lr', default=0.01, type=float, metavar='LR', help='learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='momentum')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)')
-parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 parser.add_argument('--batch_size', default=32, type=int, help='batchsize')
 parser.add_argument('--network', default='mobilenet', type=str, help='network architecture')
 parser.add_argument('--teacher', default='resnet50', type=str, help='network architecture')
-parser.add_argument('--distill_epoch', default=60, type=int, help='epoch for distillation')
-parser.add_argument('--max_epoch', default=100, type=int, help='epoch for all')
-parser.add_argument('--KD', default=True, type=bool, help='KD (Hinton) method')
 parser.add_argument('--data_root', default='/dataset/MIT_scenes', type=str, help='Path to ImageNet')
 args = parser.parse_args()
 

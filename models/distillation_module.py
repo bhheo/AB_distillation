@@ -153,7 +153,6 @@ class AB_distill_Resnet2mobilenetV2(nn.Module):
 
         self.stage1 = True
         #self.criterion = criterion
-        self.criterion_MSE = nn.MSELoss(size_average=False)
         self.criterion_CE = nn.CrossEntropyLoss(size_average=False)
 
     def forward(self, x):
@@ -194,30 +193,33 @@ class AB_distill_Resnet2mobilenetV2(nn.Module):
         self.res4_s = self.s_net.features[18][0:2](self.res4_s)
 
 
-        margin = 1.0
-        loss = self.criterion_active_L2(self.Connect4(self.res4_s), self.res4_t.detach(), margin) / self.batch_size
-        loss += self.criterion_active_L2(self.Connect3(self.res3_s), self.res3_t.detach(), margin) / self.batch_size / 2
-        loss += self.criterion_active_L2(self.Connect2(self.res2_s), self.res2_t.detach(), margin) / self.batch_size / 4
-        loss += self.criterion_active_L2(self.Connect1(self.res1_s), self.res1_t.detach(), margin) / self.batch_size / 8
+        if self.stage1 is True:
+            margin = 1.0
+            loss = self.criterion_active_L2(self.Connect4(self.res4_s), self.res4_t.detach(), margin) / self.batch_size
+            loss += self.criterion_active_L2(self.Connect3(self.res3_s), self.res3_t.detach(), margin) / self.batch_size / 2
+            loss += self.criterion_active_L2(self.Connect2(self.res2_s), self.res2_t.detach(), margin) / self.batch_size / 4
+            loss += self.criterion_active_L2(self.Connect1(self.res1_s), self.res1_t.detach(), margin) / self.batch_size / 8
 
-        loss /= 1000
-        loss *= 3 / 3
-        loss = loss.unsqueeze(0).unsqueeze(1)
+            loss /= 1000
+
+            loss = loss.unsqueeze(0).unsqueeze(1)
+        else:
+            loss = torch.zeros(1, 1).cuda()
 
         loss *= self.loss_multiplier
 
         loss_CE = self.criterion_CE(self.out_s, targets) / self.batch_size
         loss_CE = loss_CE.unsqueeze(0).unsqueeze(1)
 
-        loss_disp4 = ((self.Connect4(self.res4_s) > 0) ^ (self.res4_t > 0)).sum().float() / self.res4_t.nelement()
-        loss_disp3 = ((self.Connect3(self.res3_s) > 0) ^ (self.res3_t > 0)).sum().float() / self.res3_t.nelement()
-        loss_disp2 = ((self.Connect2(self.res2_s) > 0) ^ (self.res2_t > 0)).sum().float() / self.res2_t.nelement()
-        loss_disp1 = ((self.Connect1(self.res1_s) > 0) ^ (self.res1_t > 0)).sum().float() / self.res1_t.nelement()
+        loss_AT4 = ((self.Connect4(self.res4_s) > 0) ^ (self.res4_t > 0)).sum().float() / self.res4_t.nelement()
+        loss_AT3 = ((self.Connect3(self.res3_s) > 0) ^ (self.res3_t > 0)).sum().float() / self.res3_t.nelement()
+        loss_AT2 = ((self.Connect2(self.res2_s) > 0) ^ (self.res2_t > 0)).sum().float() / self.res2_t.nelement()
+        loss_AT1 = ((self.Connect1(self.res1_s) > 0) ^ (self.res1_t > 0)).sum().float() / self.res1_t.nelement()
 
-        loss_disp4 = loss_disp4.unsqueeze(0).unsqueeze(1)
-        loss_disp3 = loss_disp3.unsqueeze(0).unsqueeze(1)
-        loss_disp2 = loss_disp2.unsqueeze(0).unsqueeze(1)
-        loss_disp1 = loss_disp1.unsqueeze(0).unsqueeze(1)
+        loss_AT4 = loss_AT4.unsqueeze(0).unsqueeze(1)
+        loss_AT3 = loss_AT3.unsqueeze(0).unsqueeze(1)
+        loss_AT2 = loss_AT2.unsqueeze(0).unsqueeze(1)
+        loss_AT1 = loss_AT1.unsqueeze(0).unsqueeze(1)
 
         _, predicted = torch.max(self.out_s.data, 1)
         correct = predicted.eq(targets.data).sum().float().unsqueeze(0).unsqueeze(1)
@@ -230,7 +232,7 @@ class AB_distill_Resnet2mobilenetV2(nn.Module):
         else:
             loss_KD = torch.zeros(1,1).cuda()
 
-        return torch.cat([loss, loss_CE, loss_KD, loss_disp4, loss_disp3, loss_disp2, loss_disp1, correct], dim=1)
+        return torch.cat([loss, loss_CE, loss_KD, loss_AT4, loss_AT3, loss_AT2, loss_AT1, correct], dim=1)
 
 
 class AB_distill_Resnet2mobilenet(nn.Module):
@@ -306,30 +308,33 @@ class AB_distill_Resnet2mobilenet(nn.Module):
         self.out_imagenet = self.Connectfc(out)
         self.out_s = self.s_net.fc(out)
 
-        margin = 1.0
-        loss = self.criterion_active_L2(self.Connect4(self.res4_s), self.res4_t.detach(), margin) / self.batch_size
-        loss += self.criterion_active_L2(self.Connect3(self.res3_s), self.res3_t.detach(), margin) / self.batch_size / 2
-        loss += self.criterion_active_L2(self.Connect2(self.res2_s), self.res2_t.detach(), margin) / self.batch_size / 4
-        loss += self.criterion_active_L2(self.Connect1(self.res1_s), self.res1_t.detach(), margin) / self.batch_size / 8
+        if self.stage1 is True:
+            margin = 1.0
+            loss = self.criterion_active_L2(self.Connect4(self.res4_s), self.res4_t.detach(), margin) / self.batch_size
+            loss += self.criterion_active_L2(self.Connect3(self.res3_s), self.res3_t.detach(), margin) / self.batch_size / 2
+            loss += self.criterion_active_L2(self.Connect2(self.res2_s), self.res2_t.detach(), margin) / self.batch_size / 4
+            loss += self.criterion_active_L2(self.Connect1(self.res1_s), self.res1_t.detach(), margin) / self.batch_size / 8
 
-        loss /= 1000
-        loss *= 3 / 3
+            loss /= 1000
 
-        loss = loss.unsqueeze(0).unsqueeze(1)
+            loss = loss.unsqueeze(0).unsqueeze(1)
+        else:
+            loss = torch.zeros(1, 1).cuda()
+            
         loss *= self.loss_multiplier
 
         loss_CE = self.criterion_CE(self.out_s, targets) / self.batch_size
         loss_CE = loss_CE.unsqueeze(0).unsqueeze(1)
 
-        loss_disp4 = ((self.Connect4(self.res4_s) > 0) ^ (self.res4_t > 0)).sum().float() / self.res4_t.nelement()
-        loss_disp3 = ((self.Connect3(self.res3_s) > 0) ^ (self.res3_t > 0)).sum().float() / self.res3_t.nelement()
-        loss_disp2 = ((self.Connect2(self.res2_s) > 0) ^ (self.res2_t > 0)).sum().float() / self.res2_t.nelement()
-        loss_disp1 = ((self.Connect1(self.res1_s) > 0) ^ (self.res1_t > 0)).sum().float() / self.res1_t.nelement()
+        loss_AT4 = ((self.Connect4(self.res4_s) > 0) ^ (self.res4_t > 0)).sum().float() / self.res4_t.nelement()
+        loss_AT3 = ((self.Connect3(self.res3_s) > 0) ^ (self.res3_t > 0)).sum().float() / self.res3_t.nelement()
+        loss_AT2 = ((self.Connect2(self.res2_s) > 0) ^ (self.res2_t > 0)).sum().float() / self.res2_t.nelement()
+        loss_AT1 = ((self.Connect1(self.res1_s) > 0) ^ (self.res1_t > 0)).sum().float() / self.res1_t.nelement()
 
-        loss_disp4 = loss_disp4.unsqueeze(0).unsqueeze(1)
-        loss_disp3 = loss_disp3.unsqueeze(0).unsqueeze(1)
-        loss_disp2 = loss_disp2.unsqueeze(0).unsqueeze(1)
-        loss_disp1 = loss_disp1.unsqueeze(0).unsqueeze(1)
+        loss_AT4 = loss_AT4.unsqueeze(0).unsqueeze(1)
+        loss_AT3 = loss_AT3.unsqueeze(0).unsqueeze(1)
+        loss_AT2 = loss_AT2.unsqueeze(0).unsqueeze(1)
+        loss_AT1 = loss_AT1.unsqueeze(0).unsqueeze(1)
 
         _, predicted = torch.max(self.out_s.data, 1)
         correct = predicted.eq(targets.data).sum().float().unsqueeze(0).unsqueeze(1)
@@ -341,5 +346,5 @@ class AB_distill_Resnet2mobilenet(nn.Module):
         else:
             loss_KD = torch.zeros(1,1).cuda()
 
-        return torch.cat([loss, loss_CE, loss_KD, loss_disp4, loss_disp3, loss_disp2, loss_disp1, correct], dim=1)
+        return torch.cat([loss, loss_CE, loss_KD, loss_AT4, loss_AT3, loss_AT2, loss_AT1, correct], dim=1)
 
