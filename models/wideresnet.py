@@ -20,18 +20,11 @@ class BasicBlock(nn.Module):
         self.convShortcut = (not self.equalInOut) and nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride,
                                padding=0, bias=False) or None
 
-        self.no_bnrelu = False
     def forward(self, x):
-        if self.no_bnrelu:
-            if not self.equalInOut:
-                x = x
-            else:
-                out = x
+        if not self.equalInOut:
+            x = self.relu1(self.bn1(x))
         else:
-            if not self.equalInOut:
-                x = self.relu1(self.bn1(x))
-            else:
-                out = self.relu1(self.bn1(x))
+            out = self.relu1(self.bn1(x))
         out = self.relu2(self.bn2(self.conv1(out if self.equalInOut else x)))
         if self.droprate > 0:
             out = F.dropout(out, p=self.droprate, training=self.training)
@@ -49,14 +42,8 @@ class NetworkBlock(nn.Module):
             layers.append(block(i == 0 and in_planes or out_planes, out_planes, i == 0 and stride or 1, dropRate))
         return nn.Sequential(*layers)
 
-    def forward(self, x, no_bnrelu=False):
-        if no_bnrelu:
-            self.layer[0].no_bnrelu = True
-            res = self.layer(x)
-            self.layer[0].no_bnrelu = False
-            return res
-        else:
-            return self.layer(x)
+    def forward(self, x):
+        return self.layer(x)
 
 class WideResNet(nn.Module):
     def __init__(self, depth, num_classes, widen_factor=1, dropRate=0.0):

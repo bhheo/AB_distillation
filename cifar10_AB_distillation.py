@@ -13,36 +13,21 @@ import torch.nn.functional as F
 from models import *
 
 
+# Proposed alternative loss function
 def criterion_alternative_L2(source, target, margin):
     loss = ((source + margin)**2 * ((source > -margin) & (target <= 0)).float() +
             (source - margin)**2 * ((source <= margin) & (target > 0)).float())
     return torch.abs(loss).sum()
 
-class AverageMeter(object):
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-# Parameters
+# Settings
 gpu_num = 0
+
+distill_epoch = 1
+max_epoch = 1
 
 temperature = 3
 base_lr = 0.1
 KD = True
-
-distill_epoch = 1
-max_epoch = 5
 
 use_cuda = torch.cuda.is_available()
 
@@ -72,19 +57,19 @@ distillloader = trainloader
 
 
 # Model
-t_net = torch.load('./results/WRN22-4_200epoch_final.t7', map_location=lambda storage, location: storage)['net']
-# # version issue
-# for m in t_net.modules():
-#     if isinstance(m, nn.BatchNorm2d):
-#         m.register_buffer('num_batches_tracked', torch.tensor(0, dtype=torch.long))
-teacher = WRN22_4()
-teacher.load_state_dict(t_net.state_dict())
-student = WRN16_2()
+teacher = torch.load('./results/WRN22-4_200epoch_final.t7', map_location=lambda storage, location: storage)['net']
+# version issue (disable for torch <= 0.4.0)
+for m in teacher.modules():
+    if isinstance(m, nn.BatchNorm2d):
+        m.register_buffer('num_batches_tracked', torch.tensor(0, dtype=torch.long))
 
-s_net = Distill_WRN_Simple(student)
-t_net = Distill_WRN_Simple(teacher)
+# Teacher network
+t_net = WRN22_4()
+t_net.load_state_dict(teacher.state_dict())
+# Student network
+s_net = WRN16_2()
 
-# soft connection
+# Wrapper for distillation
 d_net = Active_Soft_WRN_norelu(teacher, s_net)
 
 if use_cuda:
@@ -95,10 +80,9 @@ if use_cuda:
     cudnn.benchmark = True
 
 criterion_CE = nn.CrossEntropyLoss()
-optimizer = optim.SGD(s_net.parameters(), lr=base_lr, momentum=0.9, weight_decay=5e-4)
 
-# Training
-def train_distillation(d_net, s_net, epoch):
+# Distillation
+def Distillation(d_net, s_net, epoch):
     epoch_start_time = time.time()
     print('\nDistillation epoch: %d' % epoch)
     d_net.train()
@@ -124,7 +108,6 @@ def train_distillation(d_net, s_net, epoch):
 
         # Alternative loss
         margin = 1.0
-
         loss_alter = criterion_alternative_L2(d_net.Connect3(d_net.res3), d_net.res3_t.detach(), margin) / batch_size
         loss_alter += criterion_alternative_L2(d_net.Connect2(d_net.res2), d_net.res2_t.detach(), margin) / batch_size / 2
         loss_alter += criterion_alternative_L2(d_net.Connect1(d_net.res1), d_net.res1_t.detach(), margin) / batch_size / 4
@@ -174,7 +157,7 @@ def train(net, epoch):
     print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (train_loss / (b_idx + 1), 100. * correct / total, correct, total))
     return train_loss / (b_idx + 1)
 
-# Training
+# Training with KD loss
 def train_KD(t_net, s_net, epoch):
     epoch_start_time = time.time()
     print('\nClassification training Epoch: %d' % epoch)
@@ -188,26 +171,24 @@ def train_KD(t_net, s_net, epoch):
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
 
-        batch_size1 = inputs.shape[0]
-        batch_size2 = inputs.shape[0]
+        batch_size = inputs.shape[0]
 
         optimizer.zero_grad()
         inputs, targets = Variable(inputs), Variable(targets)
         out_t = t_net(inputs)
-        outputs = s_net(inputs)
+        out_s = s_net(inputs)
 
-        loss_ori = criterion_CE(outputs[0:batch_size1, :], targets)
-        loss_KD = - (F.softmax(t_net.out / temperature, 1).detach() *
-                     (F.log_softmax(s_net.out / temperature, 1) - F.log_softmax(t_net.out / temperature, 1).detach())
-                     ).sum() / batch_size2
+        loss_CE = criterion_CE(out_s, targets)
+        loss_KD = - (F.softmax(out_t / temperature, 1).detach() *
+                     (F.log_softmax(out_s / temperature, 1) - F.log_softmax(out_t / temperature, 1).detach())).sum() / batch_size
 
-        loss = loss_KD# + loss_ori
+        loss = loss_KD# + loss_CE
 
         loss.backward()
         optimizer.step()
 
         train_loss += loss.item()
-        _, predicted = torch.max(outputs[0:batch_size1, :].data, 1)
+        _, predicted = torch.max(out_s.data, 1)
         total += targets.size(0)
         correct += predicted.eq(targets.data).cpu().sum().float()
         b_idx = batch_idx
@@ -216,6 +197,7 @@ def train_KD(t_net, s_net, epoch):
     print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (train_loss / (b_idx + 1), 100. * correct / total, correct, total))
     return train_loss / (b_idx + 1)
 
+# Test
 def test(net, epoch, save=False):
     epoch_start_time = time.time()
     net.eval()
@@ -253,11 +235,10 @@ for epoch in range(1, int(distill_epoch) + 1):
                                {'params': d_net.Connect1.parameters()},
                                {'params': d_net.Connect2.parameters()},
                                {'params': d_net.Connect3.parameters()}], lr=base_lr, nesterov=True, momentum=0.9, weight_decay=5e-4)
-    train_distillation(d_net, s_net, epoch)
+    Distillation(d_net, s_net, epoch)
 
-# Cross-entropy training
+# Classification training
 currentloader = trainloader
-final_acc = AverageMeter()
 optimizer = optim.SGD(s_net.parameters(), lr=base_lr, nesterov=True, momentum=0.9, weight_decay=5e-4)
 for epoch in range(1, max_epoch+1):
     if epoch == math.ceil(max_epoch*0.3)+1:
@@ -273,15 +254,6 @@ for epoch in range(1, max_epoch+1):
         train_loss = train(s_net, epoch)
 
     test_loss, accuracy = test(s_net, epoch, save=True)
-    if epoch > max_epoch - max_epoch / 20:
-        final_acc.update(accuracy)
 
-final_acc = final_acc.avg
 
-print('\nFinal 10 average Acc: %.3f%%' % (100 * final_acc))
-
-# state = {
-#     'net': s_net,
-#     'epoch': max_epoch,
-# }
-# torch.save(state, './results/%depoch_final.t7' % (max_epoch))
+print('\nFinal accuracy: %.3f%%' % (100 * accuracy))

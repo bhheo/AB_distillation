@@ -13,6 +13,7 @@ class Active_Soft_WRN_norelu(nn.Module):
     def __init__(self, t_net, s_net):
         super(Active_Soft_WRN_norelu, self).__init__()
 
+        # Connection layers
         if t_net.nChannels == s_net.nChannels:
             C1 = []
             C2 = []
@@ -25,6 +26,7 @@ class Active_Soft_WRN_norelu(nn.Module):
             C3 = [nn.Conv2d(s_net.nChannels, t_net.nChannels, kernel_size=1, stride=1, padding=0, bias=False),
                   nn.BatchNorm2d(t_net.nChannels)]
 
+        # Weight initialize
         for m in C1 + C2 + C3:
             if isinstance(m, nn.Conv2d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
@@ -41,6 +43,8 @@ class Active_Soft_WRN_norelu(nn.Module):
         self.s_net = s_net
 
     def forward(self, x):
+
+        # For teacher network
         self.res0_t = self.t_net.conv1(x)
 
         self.res1_t = self.t_net.block1(self.res0_t)
@@ -52,7 +56,7 @@ class Active_Soft_WRN_norelu(nn.Module):
         out = out.view(-1, self.t_net.nChannels)
         self.out_t = self.t_net.fc(out)
 
-
+        # For student network
         self.res0 = self.s_net.conv1(x)
 
         self.res1 = self.s_net.block1(self.res0)
@@ -64,7 +68,7 @@ class Active_Soft_WRN_norelu(nn.Module):
         out = out.view(-1, self.s_net.nChannels)
         self.out_s = self.s_net.fc(out)
 
-        #post-processing
+        # Features before ReLU
         self.res0_t = self.t_net.block1.layer[0].bn1(self.res0_t)
         self.res1_t = self.t_net.block2.layer[0].bn1(self.res1_t)
         self.res2_t = self.t_net.block3.layer[0].bn1(self.res2_t)
@@ -77,53 +81,30 @@ class Active_Soft_WRN_norelu(nn.Module):
         return self.out_s
 
 
-class Distill_WRN_Simple(nn.Module):
-    def __init__(self, ori_net):
-        super(Distill_WRN_Simple, self).__init__()
-
-        self.conv1 = ori_net.conv1
-        self.bn1 = ori_net.bn1
-        self.block1 = ori_net.block1
-        self.block2 = ori_net.block2
-        self.block3 = ori_net.block3
-        self.fc = ori_net.fc
-        self.relu = ori_net.relu
-        self.nChannels = ori_net.nChannels
-
-    def forward(self, x):
-        self.res0 = self.conv1(x)
-
-        self.res1 = self.block1(self.res0)
-        self.res2 = self.block2(self.res1)
-        self.res3 = self.block3(self.res2)
-
-        out = self.relu(self.bn1(self.res3))
-        out = F.avg_pool2d(out, 8)
-        self.out = self.fc(out.view(-1, self.nChannels))
-
-        return self.out
-
 ##########################
 # ResNet 50 to MobileNet
 # For transfer learning
 ###########################
 
+# Designed for data parallel
 class AB_distill_Resnet2mobilenetV2(nn.Module):
 
+    # Proposed alternative loss function
     def criterion_active_L2(self, source, target, margin):
         loss = ((source + margin) ** 2 * ((source > -margin) & (target <= 0)).float() +
                 (source - margin) ** 2 * ((source <= margin) & (target > 0)).float())
         return torch.abs(loss).sum()
 
-    def __init__(self, t_net, s_net, batch_size, gpu_num, KD, loss_multiplier):
+    def __init__(self, t_net, s_net, batch_size, gpu_num, DTL, loss_multiplier):
         super(AB_distill_Resnet2mobilenetV2, self).__init__()
 
         self.batch_size = batch_size
         self.gpu_num = gpu_num
         self.loss_multiplier = loss_multiplier
-        self.KD = KD
-        #base_channel = 64
+        self.DTL = DTL
         self.expansion = 6
+
+        # Connector layers
         C1 = [nn.Conv2d(24 * self.expansion, 256, kernel_size=1, stride=1, padding=0, bias=False),
               nn.BatchNorm2d(256)]
         C2 = [nn.Conv2d(32 * self.expansion, 512, kernel_size=1, stride=1, padding=0, bias=False),
@@ -152,15 +133,14 @@ class AB_distill_Resnet2mobilenetV2(nn.Module):
         self.s_net = s_net
 
         self.stage1 = True
-        #self.criterion = criterion
         self.criterion_CE = nn.CrossEntropyLoss(size_average=False)
 
     def forward(self, x):
 
         inputs = x[0]
         targets = x[1]
-        #inputs = x
 
+        # Teacher network
         self.res0_t = self.t_net.maxpool(self.t_net.relu(self.t_net.bn1(self.t_net.conv1(inputs))))
 
         self.res1_t = self.t_net.layer1(self.res0_t)
@@ -174,8 +154,7 @@ class AB_distill_Resnet2mobilenetV2(nn.Module):
         self.out_t = self.t_net.fc(out)
 
 
-        # self.res0_s = self.s_net.maxpool(self.s_net.relu(self.s_net.bn1(self.s_net.conv1(x))))
-
+        # Student network
         self.res1_s = self.s_net.features[0:4](inputs)
         self.res2_s = self.s_net.features[4:7](self.res1_s)
         self.res3_s = self.s_net.features[7:14](self.res2_s)
@@ -186,13 +165,25 @@ class AB_distill_Resnet2mobilenetV2(nn.Module):
         self.out_imagenet = self.Connectfc(out)
         self.out_s = self.s_net.classifier(out)
 
-        # To before ReLU
+        # Features before ReLU
         self.res1_s = self.s_net.features[4].conv[0:2](self.res1_s)
         self.res2_s = self.s_net.features[7].conv[0:2](self.res2_s)
         self.res3_s = self.s_net.features[14].conv[0:2](self.res3_s)
         self.res4_s = self.s_net.features[18][0:2](self.res4_s)
 
 
+        # Activation transfer loss
+        loss_AT4 = ((self.Connect4(self.res4_s) > 0) ^ (self.res4_t > 0)).sum().float() / self.res4_t.nelement()
+        loss_AT3 = ((self.Connect3(self.res3_s) > 0) ^ (self.res3_t > 0)).sum().float() / self.res3_t.nelement()
+        loss_AT2 = ((self.Connect2(self.res2_s) > 0) ^ (self.res2_t > 0)).sum().float() / self.res2_t.nelement()
+        loss_AT1 = ((self.Connect1(self.res1_s) > 0) ^ (self.res1_t > 0)).sum().float() / self.res1_t.nelement()
+
+        loss_AT4 = loss_AT4.unsqueeze(0).unsqueeze(1)
+        loss_AT3 = loss_AT3.unsqueeze(0).unsqueeze(1)
+        loss_AT2 = loss_AT2.unsqueeze(0).unsqueeze(1)
+        loss_AT1 = loss_AT1.unsqueeze(0).unsqueeze(1)
+
+        # Alternative loss
         if self.stage1 is True:
             margin = 1.0
             loss = self.criterion_active_L2(self.Connect4(self.res4_s), self.res4_t.detach(), margin) / self.batch_size
@@ -208,49 +199,46 @@ class AB_distill_Resnet2mobilenetV2(nn.Module):
 
         loss *= self.loss_multiplier
 
+        # Cross-entropy loss
         loss_CE = self.criterion_CE(self.out_s, targets) / self.batch_size
         loss_CE = loss_CE.unsqueeze(0).unsqueeze(1)
 
-        loss_AT4 = ((self.Connect4(self.res4_s) > 0) ^ (self.res4_t > 0)).sum().float() / self.res4_t.nelement()
-        loss_AT3 = ((self.Connect3(self.res3_s) > 0) ^ (self.res3_t > 0)).sum().float() / self.res3_t.nelement()
-        loss_AT2 = ((self.Connect2(self.res2_s) > 0) ^ (self.res2_t > 0)).sum().float() / self.res2_t.nelement()
-        loss_AT1 = ((self.Connect1(self.res1_s) > 0) ^ (self.res1_t > 0)).sum().float() / self.res1_t.nelement()
+        # DTL (Distillation in Transfer Learning) loss
+        if self.DTL is True:
+            loss_DTL = torch.mean(torch.pow((self.out_t - torch.mean(self.out_t, 1, keepdim=True)).detach()
+                                           - (self.out_imagenet - torch.mean(self.out_imagenet, 1, keepdim=True)), 2)) * 10
 
-        loss_AT4 = loss_AT4.unsqueeze(0).unsqueeze(1)
-        loss_AT3 = loss_AT3.unsqueeze(0).unsqueeze(1)
-        loss_AT2 = loss_AT2.unsqueeze(0).unsqueeze(1)
-        loss_AT1 = loss_AT1.unsqueeze(0).unsqueeze(1)
+            loss_DTL = loss_DTL.unsqueeze(0).unsqueeze(1)
+        else:
+            loss_DTL = torch.zeros(1,1).cuda()
 
+        # Training accuracy
         _, predicted = torch.max(self.out_s.data, 1)
         correct = predicted.eq(targets.data).sum().float().unsqueeze(0).unsqueeze(1)
 
-        if self.KD is True:
-            loss_KD = torch.mean(torch.pow((self.out_t - torch.mean(self.out_t, 1, keepdim=True)).detach()
-                                           - (self.out_imagenet - torch.mean(self.out_imagenet, 1, keepdim=True)), 2)) * 10
-
-            loss_KD = loss_KD.unsqueeze(0).unsqueeze(1)
-        else:
-            loss_KD = torch.zeros(1,1).cuda()
-
-        return torch.cat([loss, loss_CE, loss_KD, loss_AT4, loss_AT3, loss_AT2, loss_AT1, correct], dim=1)
+        # Return all losses
+        return torch.cat([loss, loss_CE, loss_DTL, loss_AT4, loss_AT3, loss_AT2, loss_AT1, correct], dim=1)
 
 
+# Designed for data parallel
 class AB_distill_Resnet2mobilenet(nn.Module):
 
+    # Proposed alternative loss function
     def criterion_active_L2(self, source, target, margin):
         loss = ((source + margin) ** 2 * ((source > -margin) & (target <= 0)).float() +
                 (source - margin) ** 2 * ((source <= margin) & (target > 0)).float())
         return torch.abs(loss).sum()
 
-    def __init__(self, t_net, s_net, batch_size, gpu_num, KD, loss_multiplier):
+    def __init__(self, t_net, s_net, batch_size, gpu_num, DTL, loss_multiplier):
         super(AB_distill_Resnet2mobilenet, self).__init__()
 
         self.batch_size = batch_size
         self.gpu_num = gpu_num
         self.loss_multiplier = loss_multiplier
-        self.KD = KD
-        #base_channel = 64
+        self.DTL = DTL
         self.expansion = 2
+
+        # Connector layers
         C1 = [nn.Conv2d(128, 256, kernel_size=1, stride=1, padding=0, bias=False),
               nn.BatchNorm2d(256)]
         C2 = [nn.Conv2d(256, 512, kernel_size=1, stride=1, padding=0, bias=False),
@@ -286,6 +274,7 @@ class AB_distill_Resnet2mobilenet(nn.Module):
         inputs = x[0]
         targets = x[1]
 
+        # Teacher network
         self.res0_t = self.t_net.maxpool(self.t_net.relu(self.t_net.bn1(self.t_net.conv1(inputs))))
 
         self.res1_t = self.t_net.layer1(self.res0_t)
@@ -298,6 +287,7 @@ class AB_distill_Resnet2mobilenet(nn.Module):
         out = out.view(out.size(0), -1)
         self.out_t = self.t_net.fc(out)
 
+        # Student network
         self.res1_s = self.s_net.model[3][:-1](self.s_net.model[0:3](inputs))
         self.res2_s = self.s_net.model[5][:-1](self.s_net.model[4:5](F.relu(self.res1_s)))
         self.res3_s = self.s_net.model[11][:-1](self.s_net.model[6:11](F.relu(self.res2_s)))
@@ -308,6 +298,18 @@ class AB_distill_Resnet2mobilenet(nn.Module):
         self.out_imagenet = self.Connectfc(out)
         self.out_s = self.s_net.fc(out)
 
+        # Activation transfer loss
+        loss_AT4 = ((self.Connect4(self.res4_s) > 0) ^ (self.res4_t > 0)).sum().float() / self.res4_t.nelement()
+        loss_AT3 = ((self.Connect3(self.res3_s) > 0) ^ (self.res3_t > 0)).sum().float() / self.res3_t.nelement()
+        loss_AT2 = ((self.Connect2(self.res2_s) > 0) ^ (self.res2_t > 0)).sum().float() / self.res2_t.nelement()
+        loss_AT1 = ((self.Connect1(self.res1_s) > 0) ^ (self.res1_t > 0)).sum().float() / self.res1_t.nelement()
+
+        loss_AT4 = loss_AT4.unsqueeze(0).unsqueeze(1)
+        loss_AT3 = loss_AT3.unsqueeze(0).unsqueeze(1)
+        loss_AT2 = loss_AT2.unsqueeze(0).unsqueeze(1)
+        loss_AT1 = loss_AT1.unsqueeze(0).unsqueeze(1)
+
+        # Alternative loss
         if self.stage1 is True:
             margin = 1.0
             loss = self.criterion_active_L2(self.Connect4(self.res4_s), self.res4_t.detach(), margin) / self.batch_size
@@ -323,28 +325,22 @@ class AB_distill_Resnet2mobilenet(nn.Module):
             
         loss *= self.loss_multiplier
 
+        # Cross-entropy loss
         loss_CE = self.criterion_CE(self.out_s, targets) / self.batch_size
         loss_CE = loss_CE.unsqueeze(0).unsqueeze(1)
 
-        loss_AT4 = ((self.Connect4(self.res4_s) > 0) ^ (self.res4_t > 0)).sum().float() / self.res4_t.nelement()
-        loss_AT3 = ((self.Connect3(self.res3_s) > 0) ^ (self.res3_t > 0)).sum().float() / self.res3_t.nelement()
-        loss_AT2 = ((self.Connect2(self.res2_s) > 0) ^ (self.res2_t > 0)).sum().float() / self.res2_t.nelement()
-        loss_AT1 = ((self.Connect1(self.res1_s) > 0) ^ (self.res1_t > 0)).sum().float() / self.res1_t.nelement()
+        # DTL (Distillation in Transfer Learning) loss
+        if self.DTL is True:
+            loss_DTL = torch.mean(torch.pow((self.out_t - torch.mean(self.out_t, 1, keepdim=True)).detach()
+                                           - (self.out_imagenet - torch.mean(self.out_imagenet, 1, keepdim=True)), 2)) * 10
+            loss_DTL = loss_DTL.unsqueeze(0).unsqueeze(1)
+        else:
+            loss_DTL = torch.zeros(1,1).cuda()
 
-        loss_AT4 = loss_AT4.unsqueeze(0).unsqueeze(1)
-        loss_AT3 = loss_AT3.unsqueeze(0).unsqueeze(1)
-        loss_AT2 = loss_AT2.unsqueeze(0).unsqueeze(1)
-        loss_AT1 = loss_AT1.unsqueeze(0).unsqueeze(1)
-
+        # Training accuracy
         _, predicted = torch.max(self.out_s.data, 1)
         correct = predicted.eq(targets.data).sum().float().unsqueeze(0).unsqueeze(1)
 
-        if self.KD is True:
-            loss_KD = torch.mean(torch.pow((self.out_t - torch.mean(self.out_t, 1, keepdim=True)).detach()
-                                           - (self.out_imagenet - torch.mean(self.out_imagenet, 1, keepdim=True)), 2)) * 10
-            loss_KD = loss_KD.unsqueeze(0).unsqueeze(1)
-        else:
-            loss_KD = torch.zeros(1,1).cuda()
-
-        return torch.cat([loss, loss_CE, loss_KD, loss_AT4, loss_AT3, loss_AT2, loss_AT1, correct], dim=1)
+        # Return all losses
+        return torch.cat([loss, loss_CE, loss_DTL, loss_AT4, loss_AT3, loss_AT2, loss_AT1, correct], dim=1)
 

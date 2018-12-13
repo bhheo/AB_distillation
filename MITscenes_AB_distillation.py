@@ -49,11 +49,6 @@ def accuracy(output, target, topk=(1,)):
 
     return res
 
-def criterion_active_L2(source, target, margin):
-    loss = ((source + margin) ** 2 * ((source > -margin) & (target <= 0)).float() +
-            (source - margin) ** 2 * ((source <= margin) & (target > 0)).float())
-    return torch.abs(loss).sum()
-
 dataset_name = 'MITscenes'
 
 parser = argparse.ArgumentParser(description='PyTorch MITscenes Training')
@@ -62,14 +57,14 @@ gpu_nums = [0, 1]
 
 parser.add_argument('--loss_multiplier', default=1, type=float, help='multiplier to loss')
 parser.add_argument('--pretrained', default=False, type=bool, help='Use pretrained network')
-parser.add_argument('--KD', default=True, type=bool, help='KD (Hinton) method')
+parser.add_argument('--DTL', default=True, type=bool, help='DTL (Distillation in Transfer Learning) method')
 parser.add_argument('--distill_epoch', default=60, type=int, help='epoch for distillation')
 parser.add_argument('--max_epoch', default=100, type=int, help='epoch for all')
 parser.add_argument('--lr', default=0.01, type=float, metavar='LR', help='learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='momentum')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--batch_size', default=32, type=int, help='batchsize')
-parser.add_argument('--network', default='mobilenet', type=str, help='network architecture')
+parser.add_argument('--network', default='mobilenetV2', type=str, help='network architecture')
 parser.add_argument('--teacher', default='resnet50', type=str, help='network architecture')
 parser.add_argument('--data_root', default='/dataset/MIT_scenes', type=str, help='Path to ImageNet')
 args = parser.parse_args()
@@ -115,21 +110,21 @@ if args.teacher is 'resnet50':
 else:
     raise AssertionError("Undefined teacher network architecture")
 
-# Model
+# Student model
 if args.network is 'mobilenetV2':
     s_net = mobilenetv2(pretrained=args.pretrained)
     s_net.classifier[-1] = nn.Linear(s_net.last_channel, 67)
     s_net.classifier[-1].weight.data.normal_(0, 0.01)
     s_net.classifier[-1].bias.data.zero_()
 
-    distill_net = AB_distill_Resnet2mobilenetV2(t_net, s_net, args.batch_size, len(gpu_nums), args.KD, args.loss_multiplier)
+    distill_net = AB_distill_Resnet2mobilenetV2(t_net, s_net, args.batch_size, len(gpu_nums), args.DTL, args.loss_multiplier)
 elif args.network is 'mobilenet':
     s_net = mobilenet(pretrained=args.pretrained)
     s_net.fc = nn.Linear(1024, 67)
     s_net.fc.weight.data.normal_(0, 0.01)
     s_net.fc.bias.data.zero_()
 
-    distill_net = AB_distill_Resnet2mobilenet(t_net, s_net, args.batch_size, len(gpu_nums), args.KD, args.loss_multiplier)
+    distill_net = AB_distill_Resnet2mobilenet(t_net, s_net, args.batch_size, len(gpu_nums), args.DTL, args.loss_multiplier)
 else:
     raise AssertionError("Undefined student network architecture")
 
@@ -142,8 +137,8 @@ if use_cuda:
 
 criterion_CE = nn.CrossEntropyLoss()
 
-# Training
-def train_distillation(distill_net, epoch, withCE=False):
+# Distillation
+def Distillation(distill_net, epoch, withCE=False):
     epoch_start_time = time.time()
     print('\nDistillation Epoch: %d' % epoch)
 
@@ -170,7 +165,7 @@ def train_distillation(distill_net, epoch, withCE=False):
 
         loss = outputs[:, 0].sum()
 
-        if args.KD is True:
+        if args.DTL is True:
             loss += outputs[:, 2].sum()
 
         if withCE is True:
@@ -204,8 +199,8 @@ def train_distillation(distill_net, epoch, withCE=False):
     return train_loss1 / (b_idx+1), train_loss2 / (b_idx+1), train_loss3 / (b_idx+1)
 
 
-# Training
-def train_KD(distill_net, epoch):
+# Training with DTL(Distillation in Transfer Learning) loss
+def train_DTL(distill_net, epoch):
     epoch_start_time = time.time()
     print('\nClassification training Epoch: %d' % epoch)
     distill_net.train()
@@ -226,8 +221,8 @@ def train_KD(distill_net, epoch):
         # CE loss
         loss = outputs[:, 1].sum()
 
-        if args.KD:
-            # KD loss
+        if args.DTL:
+            # DTL loss
             loss += outputs[:, 2].sum()
 
         correct += outputs[:, 7].sum()
@@ -278,7 +273,7 @@ def train(net, epoch):
     print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (train_loss / (b_idx + 1), 100. * correct / total, correct, total))
     return train_loss / (b_idx + 1)
 
-
+# Test
 def test(net, epoch, save=False):
     epoch_start_time = time.time()
     net.eval()
@@ -303,8 +298,7 @@ def test(net, epoch, save=False):
 
     return test_loss / (b_idx + 1), top1.avg, top5.avg
 
-
-
+# Learning rate scheduling
 def adjust_learning_rate(optimizer, epoch):
     if epoch < max_epoch / 2:
         lr = base_lr
@@ -322,7 +316,7 @@ optimizer = optim.SGD([{'params': s_net.parameters()},
                        {'params': distill_net.module.Connectfc.parameters()},], lr=0.1, nesterov=True, momentum=args.momentum, weight_decay=args.weight_decay)
 
 for epoch in range(1, int(distill_epoch) + 1):
-    train_distillation(distill_net, epoch)
+    Distillation(distill_net, epoch)
 
 # Cross-entropy training
 distill_net.module.stage1 = False
@@ -332,8 +326,8 @@ train_loss = 0
 for epoch in range(1, max_epoch+1):
     adjust_learning_rate(optimizer, epoch - 1)
 
-    if args.KD:
-        train_loss = train_KD(distill_net, epoch)
+    if args.DTL:
+        train_loss = train_DTL(distill_net, epoch)
     else:
         train_loss = train(s_net, epoch)
 
@@ -341,10 +335,3 @@ for epoch in range(1, max_epoch+1):
         test_loss, top1, top5 = test(s_net, epoch, save=True)
 
 print('\nFinal Top1 : %.3f%%, Top5 : %.3f%%' % (top1, top5))
-
-# state = {
-#     'net': s_net,
-#     'epoch': max_epoch,
-# }
-# torch.save(state, './results/%depoch_final.t7' % (max_epoch))
-
