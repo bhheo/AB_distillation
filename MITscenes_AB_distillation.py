@@ -53,18 +53,18 @@ dataset_name = 'MITscenes'
 
 parser = argparse.ArgumentParser(description='PyTorch MITscenes Training')
 
-gpu_nums = [0, 1]
+gpu_nums = [0]
 
 parser.add_argument('--loss_multiplier', default=1, type=float, help='multiplier to loss')
-parser.add_argument('--pretrained', default=False, type=bool, help='Use pretrained network')
-parser.add_argument('--DTL', default=True, type=bool, help='DTL (Distillation in Transfer Learning) method')
+parser.add_argument('--pretrained', default=False, type=int, help='Use pretrained network')
+parser.add_argument('--DTL', default=True, type=int, help='DTL (Distillation in Transfer Learning) method')
 parser.add_argument('--distill_epoch', default=60, type=int, help='epoch for distillation')
 parser.add_argument('--max_epoch', default=100, type=int, help='epoch for all')
 parser.add_argument('--lr', default=0.01, type=float, metavar='LR', help='learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='momentum')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--batch_size', default=32, type=int, help='batchsize')
-parser.add_argument('--network', default='mobilenetV2', type=str, help='network architecture')
+parser.add_argument('--network', default='mobilenet', type=str, help='network architecture')
 parser.add_argument('--teacher', default='resnet50', type=str, help='network architecture')
 parser.add_argument('--data_root', default='/dataset/MIT_scenes', type=str, help='Path to ImageNet')
 args = parser.parse_args()
@@ -111,14 +111,14 @@ else:
     raise AssertionError("Undefined teacher network architecture")
 
 # Student model
-if args.network is 'mobilenetV2':
+if args.network.startswith('mobilenetV2') and args.network.endswith('mobilenetV2'):
     s_net = mobilenetv2(pretrained=args.pretrained)
     s_net.classifier[-1] = nn.Linear(s_net.last_channel, 67)
     s_net.classifier[-1].weight.data.normal_(0, 0.01)
     s_net.classifier[-1].bias.data.zero_()
 
     distill_net = AB_distill_Resnet2mobilenetV2(t_net, s_net, args.batch_size, len(gpu_nums), args.DTL, args.loss_multiplier)
-elif args.network is 'mobilenet':
+elif args.network.startswith('mobilenet') and args.network.endswith('mobilenet'):
     s_net = mobilenet(pretrained=args.pretrained)
     s_net.fc = nn.Linear(1024, 67)
     s_net.fc.weight.data.normal_(0, 0.01)

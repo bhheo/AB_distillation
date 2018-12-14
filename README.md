@@ -1,30 +1,57 @@
-## Knowledge Transfer via Distillation of Activation Boundaries Formed by Hidden Neurons [AAAI 2019]
+# Knowledge Transfer via Distillation of Activation Boundaries Formed by Hidden Neurons
 
-Official Pytorch implementation of our AAAI paper [arxiv](https://arxiv.org/abs/1811.03233) .
+Official Pytorch implementation of paper:
 
-
-### Requirements 
-Pytorch 0.4.1, torchvision
+[Knowledge Transfer via Distillation of Activation Boundaries Formed by Hidden Neurons](https://arxiv.org/abs/1811.03233) (AAAI 2019).
 
 
-### Knowledge distillation [(CIFAR-10)](https://www.cs.toronto.edu/~kriz/cifar.html) 
+## Environment
+Python 3.6, Pytorch 0.4.1, Torchvision
 
-Run file : cifar10_AB_distillation.py
 
-Sample teacher network (WRN 22-4 is included)
+## Knowledge distillation [(CIFAR-10)](https://www.cs.toronto.edu/~kriz/cifar.html) 
 
-### Transfer learning [(MIT_scenes)](http://web.mit.edu/torralba/www/indoor.html) 
+cifar10_AB_distillation.py
 
-Run file : MITscenes_AB_distillation.py 
+\
+Distillation from WRN 22-4 (teacher) to WRN 16-2 (student) on CIFAR-10 dataset.
 
-Please download and parse dataset to train and test folder.
+Pre-trained teacher network (WRN 22-4) is included. Just run the code.
 
-### Citation
+## Transfer learning [(MIT_scenes)](http://web.mit.edu/torralba/www/indoor.html) 
 
-If code was helpful, please cite our paper.
+MITscenes_AB_distillation.py 
+
+\
+Transfer learning from ImageNet pre-trained model (teacher) to randomly initialized model (student).
+
+Teacher : ImageNet pre-trained ResNet 50
+
+Student : MobileNet or MobileNetV2 (randomly initialized model)
+
+Please change base learning rate to 0.1 for MobileNetV2.
+
+\
+MIT_scenes dataset should be arranged for Torchvision ImageFolder function.
+
+>train set : 
+>$dataset_path / train / $class_name / $image_name \
+>test set :
+>$dataset_path / test / $class_name / $image name
+
+and run with dataset path.
+
+MobileNet
+> python MITscenes_AB_distillation.py --data_root $dataset_path
+
+MobileNet V2
+> python MITscenes_AB_distillation.py --data_root $dataset_path --network mobilenetV2
+
+
+## Citation
 
 Byeongho Heo, Minsik Lee, Sangdoo Yun, Jin Young Choi, "
-Knowledge Transfer via Distillation of Activation Boundaries Formed by Hidden Neurons", CoRR, 2018. (on AAAI at 2019 Jan.)
+Knowledge Transfer via Distillation of Activation Boundaries Formed by Hidden Neurons", CoRR, 2018. (AAAI at 2019 Feb.)
 
 
 
