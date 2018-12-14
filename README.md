@@ -34,22 +34,37 @@ Please change base learning rate to 0.1 for MobileNetV2.
 \
 MIT_scenes dataset should be arranged for Torchvision ImageFolder function.
 
->train set : 
->$dataset_path / train / $class_name / $image_name \
->test set :
->$dataset_path / test / $class_name / $image name
+
+Train set :
+`$dataset_path / train / $class_name / $image_name `
+
+Test set :
+`$dataset_path / test / $class_name / $image name`
+
 
 and run with dataset path.
 
 MobileNet
-> python MITscenes_AB_distillation.py --data_root $dataset_path
+```
+python MITscenes_AB_distillation.py --data_root $dataset_path
+```
 
 MobileNet V2
-> python MITscenes_AB_distillation.py --data_root $dataset_path --network mobilenetV2
+```
+python MITscenes_AB_distillation.py --data_root $dataset_path --network mobilenetV2
+```
 
 
 ## Citation
 
+```
+@inproceedings{ABdistill,
+	title = {Knowledge Transfer via Distillation of Activation Boundaries Formed by Hidden Neurons},
+	author = {Byeongho Heo, Minsik Lee, Sangdoo Yun, Jin Young Choi},
+	booktitle = {AAAI},
+	year = {2019}
+}
+```
 Byeongho Heo, Minsik Lee, Sangdoo Yun, Jin Young Choi, "
 Knowledge Transfer via Distillation of Activation Boundaries Formed by Hidden Neurons", CoRR, 2018. (AAAI at 2019 Feb.)
 
