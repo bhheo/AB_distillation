@@ -4,6 +4,7 @@ Official Pytorch implementation of paper:
 
 [Knowledge Transfer via Distillation of Activation Boundaries Formed by Hidden Neurons](https://arxiv.org/abs/1811.03233) (AAAI 2019).
 
+Slides and poster are available on [homepage](https://sites.google.com/view/byeongho-heo/home)
 
 ## Environment
 Python 3.6, Pytorch 0.4.1, Torchvision
@@ -65,8 +66,4 @@ python MITscenes_AB_distillation.py --data_root $dataset_path --network mobilene
 	year = {2019}
 }
 ```
-Byeongho Heo, Minsik Lee, Sangdoo Yun, Jin Young Choi, "
-Knowledge Transfer via Distillation of Activation Boundaries Formed by Hidden Neurons", CoRR, 2018. (AAAI at 2019 Feb.)
-
-
 
