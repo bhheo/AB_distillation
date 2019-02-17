@@ -53,7 +53,7 @@ dataset_name = 'MITscenes'
 
 parser = argparse.ArgumentParser(description='PyTorch MITscenes Training')
 
-gpu_nums = [0]
+gpu_nums = [0, 1]
 
 parser.add_argument('--loss_multiplier', default=1, type=float, help='multiplier to loss')
 parser.add_argument('--pretrained', default=False, type=int, help='Use pretrained network')
@@ -161,7 +161,7 @@ def Distillation(distill_net, epoch, withCE=False):
         inputs, targets = Variable(inputs), Variable(targets)
 
         distill_net.module.batch_size = inputs.shape[0]
-        outputs = distill_net((inputs, targets))
+        outputs = distill_net(inputs, targets)
 
         loss = outputs[:, 0].sum()
 
@@ -170,7 +170,7 @@ def Distillation(distill_net, epoch, withCE=False):
 
         if withCE is True:
             loss += outputs[:, 1].sum()
-            correct += outputs[:, 7].sum()
+            correct += outputs[:, 7].sum().item()
             total += targets.size(0)
 
         loss_AT1 = outputs[:, 3].mean()
@@ -216,7 +216,7 @@ def train_DTL(distill_net, epoch):
         inputs, targets = Variable(inputs), Variable(targets)
 
         distill_net.module.batch_size = inputs.shape[0]
-        outputs = distill_net((inputs, targets))
+        outputs = distill_net(inputs, targets)
 
         # CE loss
         loss = outputs[:, 1].sum()
@@ -225,7 +225,7 @@ def train_DTL(distill_net, epoch):
             # DTL loss
             loss += outputs[:, 2].sum()
 
-        correct += outputs[:, 7].sum()
+        correct += outputs[:, 7].sum().item()
         total += targets.size(0)
 
         optimizer.zero_grad()
@@ -309,11 +309,7 @@ def adjust_learning_rate(optimizer, epoch):
 
 # Distillation (Initialization)
 optimizer = optim.SGD([{'params': s_net.parameters()},
-                       {'params': distill_net.module.Connect1.parameters()},
-                       {'params': distill_net.module.Connect2.parameters()},
-                       {'params': distill_net.module.Connect3.parameters()},
-                       {'params': distill_net.module.Connect4.parameters()},
-                       {'params': distill_net.module.Connectfc.parameters()},], lr=0.1, nesterov=True, momentum=args.momentum, weight_decay=args.weight_decay)
+                       {'params': distill_net.module.Connectors.parameters()}], lr=0.1, nesterov=True, momentum=args.momentum, weight_decay=args.weight_decay)
 
 for epoch in range(1, int(distill_epoch) + 1):
     Distillation(distill_net, epoch)

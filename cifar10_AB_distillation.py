@@ -70,7 +70,7 @@ t_net.load_state_dict(teacher.state_dict())
 s_net = WRN16_2()
 
 # Wrapper for distillation
-d_net = Active_Soft_WRN_norelu(teacher, s_net)
+d_net = Active_Soft_WRN_norelu(t_net, s_net)
 
 if use_cuda:
     torch.cuda.set_device(gpu_num)
@@ -227,14 +227,10 @@ currentloader = distillloader
 for epoch in range(1, int(distill_epoch) + 1):
     if epoch == 1:
         optimizer = optim.SGD([{'params': s_net.parameters()},
-                               {'params': d_net.Connect1.parameters()},
-                               {'params': d_net.Connect2.parameters()},
-                               {'params': d_net.Connect3.parameters()}], lr=base_lr, nesterov=True, momentum=0.9, weight_decay=5e-4)
+                               {'params': d_net.Connectors.parameters()}], lr=base_lr, nesterov=True, momentum=0.9, weight_decay=5e-4)
     elif epoch == math.ceil(distill_epoch * 0.75) + 1:
         optimizer = optim.SGD([{'params': s_net.parameters()},
-                               {'params': d_net.Connect1.parameters()},
-                               {'params': d_net.Connect2.parameters()},
-                               {'params': d_net.Connect3.parameters()}], lr=base_lr, nesterov=True, momentum=0.9, weight_decay=5e-4)
+                               {'params': d_net.Connectors.parameters()}], lr=base_lr, nesterov=True, momentum=0.9, weight_decay=5e-4)
     Distillation(d_net, s_net, epoch)
 
 # Classification training
