@@ -62,7 +62,7 @@ python MITscenes_AB_distillation.py --data_root $dataset_path --network mobilene
 @inproceedings{ABdistill,
 	title = {Knowledge Transfer via Distillation of Activation Boundaries Formed by Hidden Neurons},
 	author = {Byeongho Heo, Minsik Lee, Sangdoo Yun, Jin Young Choi},
-	booktitle = {AAAI},
+	booktitle = {AAAI Conference on Artificial Intelligence (AAAI)},
 	year = {2019}
 }
 ```
