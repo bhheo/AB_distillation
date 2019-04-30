@@ -54,7 +54,8 @@ MobileNet V2
 ```
 python MITscenes_AB_distillation.py --data_root $dataset_path --network mobilenetV2
 ```
-
+## Other implementations
+Tensorflow: https://github.com/sseung0703/Knowledge_distillation_methods_wtih_Tensorflow
 
 ## Citation
 
